@@ -1,5 +1,6 @@
 const EAT = artifacts.require("EAT");
 const Farm = artifacts.require("Farm");
+const RewardPool = artifacts.require("RewardPool");
 const DummyERC20 = artifacts.require("DummyERC20");
 const Etherio = artifacts.require("Etherio");
 
@@ -13,9 +14,8 @@ module.exports = async function(deployer, network, accounts) {
     '0'
     )
 
+    await deployer.deploy(RewardPool, EAT.address, accounts[3])
   
-    
-
     let eater_maker = new web3.eth.Contract(Farm.abi, Farm.address);
     console.log(DummyERC20.address)
     // eater_maker.methods.addPool(

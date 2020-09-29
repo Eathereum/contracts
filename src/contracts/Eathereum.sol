@@ -1,20 +1,20 @@
 pragma solidity ^0.6.0;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
-import "./EAT.sol";
+import "./RewardPool.sol";
 
 contract Eathereum {
     using SafeMath for uint256;
     
     uint256 public _fees = 0;
-    EAT public eat;
+    RewardPool public rewardPool;
     address payable public _owner;
     uint256 public playersPlayed = 0;
-    uint256 public eatToMint;
-    uint256 public eatMintLimit;
+    uint256 public eatReward;
+    uint256 public eatAwardLimit;
     uint256 public amountForMint;
-    bool public isEatAddressSet = false;
-    uint256 public eatMinted = 0;
+    bool public isRewardPoolSet = false;
+    uint256 public eatAwarded = 0;
 
     mapping(address => Player) public players;
 
@@ -44,13 +44,13 @@ contract Eathereum {
 
     constructor(
         uint256 _amountForMint, 
-        uint256 _eatToMint, 
-        uint256 _eatMintLimit
+        uint256 _eatReward, 
+        uint256 _eatAwardLimit
     ) public {
         _owner = _msgSender();
         amountForMint = _amountForMint;
-        eatToMint = _eatToMint;
-        eatMintLimit = _eatMintLimit;
+        eatReward = _eatReward;
+        eatAwardLimit = _eatAwardLimit;
     }
 
     modifier onlyOwner() {
@@ -82,10 +82,10 @@ contract Eathereum {
         _owner = newOwner;
     }
 
-    function setEatAddress(EAT _eat) public onlyOwner {
-        require(!isEatAddressSet, 'eat address already set');
-        eat = _eat;
-        isEatAddressSet = true;
+    function setRewardPoolAddress(RewardPool _rewardPool) public onlyOwner {
+        require(!isRewardPoolSet, 'eat address already set');
+        rewardPool = _rewardPool;
+        isRewardPoolSet = true;
     }
 
     function emitPlayer(address playerAddress) public {
@@ -135,10 +135,10 @@ contract Eathereum {
         players[_eaten].isPlaying = false;
         if(
             _player_eater.amount >= amountForMint 
-            && eatMinted < eatMintLimit
+            && eatAwarded < eatAwardLimit
         ) {
-            eat.mint(_player_eater.playerAddress, eatToMint);
-            eatMinted += eatToMint;
+            rewardPool.setRewards(_player_eater.playerAddress, eatReward);
+            eatAwarded = eatAwarded.add(eatReward);
         }
     }
 
