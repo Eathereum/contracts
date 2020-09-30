@@ -5,7 +5,6 @@ const RewardPool = artifacts.require('./RewardPool.sol')
 const EAT = artifacts.require('./EAT.sol')
 
 const toWei = async value => await web3.utils.toWei(value, 'ether')
-const fromWei = async value => await web3.utils.fromWei(value, 'ether')
 
 require('chai')
   .use(require('chai-as-promised'))
@@ -50,7 +49,7 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
 
 
     it('should eat player - eater has less amount then eaten', async () => {
-        await eatPlayer(owner, player, playerTwo, eathereum)
+        await eatPlayerCheck(owner, player, playerTwo, eathereum)
         const eatRewardPool = await rewardPool.rewards(player)
         assert.equal(eatRewardPool.toString(), eatReward, 'user has eat reward awaiting in pool')
         await rewardPool.withdraw({ from: player })
@@ -67,7 +66,7 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
     it('should eat player - no eat will be distributed', async () => {
         await eathereum.createPlayer(_name, { from: playerThree, value: _smallAmount })
         await eathereum.createPlayer(_namePlayerTwo, { from: playerTwo, value: _smallAmount })
-        await eatPlayer(owner, playerTwo, playerThree, eathereum)
+        await eatPlayerCheck(owner, playerTwo, playerThree, eathereum)
         const emptyPlayerRewardPoolBalance = await rewardPool.rewards(playerTwo)
         assert.equal(
             emptyPlayerRewardPoolBalance.toString(), 
@@ -80,38 +79,40 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
 
     it('should eat player - eater has more amount then eaten', async () => {
 
-      await eatPlayer(owner, player, playerTwo, eathereum)
+      await eatPlayerCheck(owner, player, playerTwo, eathereum)
     })
 
     it('should increase owner balance', async () => {
       let ownerOldBalance, 
       ownerNewBalance
 
-      ownerOldBalance = await getWalletBalance(owner)
+      ownerOldBalance = await getBalance(owner)
       await eathereum.pullFees({ from: owner})
-      ownerNewBalance = await getWalletBalance(owner)
+      ownerNewBalance = await getBalance(owner)
       assert.isAbove(ownerNewBalance, ownerOldBalance, 'owner balance has increased')
     })
 
     it('should let player leave', async () => {
         let gas = await toWei('0.00000001')
-
-        let ownerOldBalance, 
+        let playerOldBalance, 
+        playerNewBalance, 
+        ownerOldBalance, 
         ownerNewBalance
-
-        ownerOldBalance = await getWalletBalance(owner)
+        playerOldBalance = await getBalance(player)
+        ownerOldBalance = await getBalance(owner)
         await eathereum.playerLeave(player, gas, { from: owner })
         await eathereum.pullFees({ from: owner})
-        ownerNewBalance = await getWalletBalance(owner)
-        const playerTwoEathereum = await eathereum.players(playerTwo)
 
+        playerNewBalance = await getBalance(player)
+        ownerNewBalance = await getBalance(owner)
+        const playerTwoEathereum = await eathereum.players(playerTwo)
         assert.isFalse(playerTwoEathereum.isPlaying, 'player two isnt playing')
         assert.equal(
-            playerTwoEathereum.currentStake.toString(), 
+            playerTwoEathereum.amount.toString(), 
             '0', 
-            'player two current stake needs to be equal to 0'
+            'player two amount needs to be equal to 0'
         )
-        assert.isFalse(playerTwoEathereum.isPlaying)
+        assert.isAbove(playerNewBalance, playerOldBalance, 'player one balance has increased')
         assert.isAbove(ownerNewBalance, ownerOldBalance, 'owner balance has increased')
     })
 
@@ -120,71 +121,34 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
         playerNewBalance, 
         ownerOldBalance, 
         ownerNewBalance
-
         await eathereum.createPlayer(_namePlayerTwo, { from: playerTwo, value: _smallAmount })
-
-        playerOldBalance = await getBalance(eathereum, playerTwo)
-        ownerOldBalance = await getWalletBalance(owner)
+        playerOldBalance = await getBalance(playerTwo)
+        ownerOldBalance = await getBalance(owner)
         await eathereum.playerDisconnect(playerTwo, { from: owner })
         await eathereum.pullFees({ from: owner})
-        playerNewBalance = await getBalance(eathereum, playerTwo)
-        ownerNewBalance = await getWalletBalance(owner)
-        
-        assert.isBelow(playerNewBalance, playerOldBalance, 'players amount is reduced')
+        playerNewBalance = await getBalance(playerTwo)
+        ownerNewBalance = await getBalance(owner)
+        assert.equal(playerNewBalance, playerOldBalance, 'players balance is the same')
         assert.isAbove(ownerNewBalance, ownerOldBalance, 'owner balance has increased')
-    })
-
-    it('should let player withdraw only when he is not playing and with correct amount', async () => {
-        let gas = await toWei('0.00000001')
-        let playerOldBalance,
-        playerNewBalance,
-        pendingReward
-
-        await eathereum.createPlayer(_name, { from: player, value: _smallAmount })
-        pendingReward = (await eathereum.playerBalance(player)).toString()
-
-        await eathereum.withdraw(pendingReward, { from: player }).should.be.rejected
-        await eathereum.playerLeave(player, gas, {from: owner})
-        playerOldBalance = await getWalletBalance(player)
-        await eathereum.withdraw(pendingReward, { from: player }).should.be.rejected
-        pendingReward = (await eathereum.playerBalance(player)).toString()
-        await eathereum.withdraw(pendingReward, { from: player })
-        playerNewBalance = await getWalletBalance(player)
-
-        assert.isAbove(playerNewBalance, playerOldBalance)
-
     })
    
   })
 })
 
-const getBalance = async (eathereum, address) => {
-    const balance = (await eathereum.playerBalance(address)).toString()
-    const fromwei = await fromWei(balance)
-    return parseFloat(fromwei)
-}
+const getBalance = async (address) => parseFloat(
+    (web3.utils.fromWei((await web3.eth.getBalance(address)), 'ether')))
 
-const getWalletBalance = async (address) => parseFloat(
-    (web3.utils.fromWei((await web3.eth.getBalance(address)), 'ether'))
-)
+const eatPlayerCheck = async (owner, player, playerTwo, eathereum) => {
+    let gas = await toWei('0.00000001')
+    let playerOldBalance, 
+    playerNewBalance
+    playerOldBalance = await getBalance(player)
+    await eathereum.playerEaten(player, playerTwo, gas, {from: owner})
+    playerNewBalance = await getBalance(player)
+    const playerInfo = await eathereum.players(playerTwo)
+    assert.equal(playerInfo.amount.toString(), '0', 'player two amount needs to be equal to 0')
+    assert.isFalse(playerInfo.isPlaying, 'player two is no longer playing')
+    assert.isAbove(playerNewBalance, playerOldBalance, 'player one balance has increased')
 
-const eatPlayer = async (owner, eater, eaten, eathereum) => {
-    let gas = await toWei('0.000001')
-    let eaterOldBalance, 
-    eaterNewBalance,
-    eatenOldBalance,
-    eatenNewBalance
-
-    eaterOldBalance = await getBalance(eathereum, eater)
-    eatenOldBalance = await getBalance(eathereum, eaten)
-    await eathereum.playerEaten(eater, eaten, gas, {from: owner})
-    eaterNewBalance = await getBalance(eathereum, eater)
-    eatenNewBalance = await getBalance(eathereum, eaten)
-
-    const eatenInfo = await eathereum.players(eaten)
-    assert.isFalse(eatenInfo.isPlaying, 'eaten is no longer playing')
-    console.log(eaterOldBalance, eaterNewBalance)
-    assert.isAbove(eaterOldBalance, eatenNewBalance, 'eaters balance has increased')
-    assert.isBelow(eatenNewBalance, eatenOldBalance, 'eatens balance has decreased')
 }
 

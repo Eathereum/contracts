@@ -20,9 +20,8 @@ contract Eathereum {
 
     struct Player {
         string name;
-        uint256 currentStake;
         uint256 amount;
-        uint256 debt;
+        address payable playerAddress;
         bool isPlaying;
     }
 
@@ -89,84 +88,58 @@ contract Eathereum {
         isRewardPoolSet = true;
     }
 
+    function emitPlayer(address playerAddress) public {
+        Player memory _player = players[playerAddress];
+        emit EmitPlayer(_player.name, _player.amount, _player.playerAddress, _player.isPlaying);
+    }
+
     function createPlayer(string memory _name) payable public doesPlayerExist {
         require(bytes(_name).length > 0, "Name is required");
         require(msg.value > 0, "Amount is required");
         playersPlayed = playersPlayed.add(1);
-        players[_msgSender()].name = _name;
-        players[_msgSender()].amount = players[_msgSender()].amount.add(msg.value);
-        players[_msgSender()].currentStake = msg.value;
-        
-        players[_msgSender()].isPlaying = true;
+        players[_msgSender()] = Player(_name, msg.value, _msgSender(), true);
         emit EmitPlayer(_name, msg.value, _msgSender(), true);
     }
 
     function playerEaten(
-        address _eater, 
-        address _eaten, 
+        address payable _eater, 
+        address payable _eaten, 
         uint256 gas
-    ) public onlyOwner {
+    ) payable public onlyOwner {
         Player memory _player_eater = players[_eater];
         Player memory _player_eaten = players[_eaten];
-        require(_player_eaten.currentStake > 0);
+        require(_player_eaten.amount > 0);
 
-        if(_player_eater.currentStake >= _player_eaten.currentStake) {
-            uint256 fee = _player_eaten.currentStake
+        if(_player_eater.amount >= _player_eaten.amount) {
+            uint256 fee = _player_eaten.amount
                 .div(10)
                 .add(gas);
-            uint256 amountForWinner = _player_eaten.currentStake.sub(fee);
-            addWinnings(_eater, amountForWinner);
-            addDebt(_eaten, _player_eaten.currentStake);
+            uint256 amountForWinner = _player_eaten.amount.sub(fee);
+            _eater.transfer(amountForWinner);
             addFees(fee);
+            players[_eaten].amount = 0;
         } else {
             uint256 gasSplit = gas.div(2);
-            uint256 fee = _player_eater.currentStake.div(10).add(gasSplit);
-            uint256 amountForWinner = _player_eater.currentStake.sub(fee);
+            uint256 fee = _player_eater.amount.div(10).add(gasSplit);
+            uint256 amountForLoser = _player_eaten.amount
+                .sub(fee)
+                .sub(_player_eater.amount);
+            uint256 amountForWinner = _player_eater.amount.sub(fee);
             uint transactionsFee = fee.mul(2);
-
-            addWinnings(_eater, amountForWinner);
-            addDebt(_eaten, _player_eater.currentStake);
+            _eaten.transfer(amountForLoser);
+            _eater.transfer(amountForWinner);
             addFees(transactionsFee);
+            _player_eaten.amount = 0;
         }
+        players[_eaten].amount = 0;
         players[_eaten].isPlaying = false;
-        players[_eaten].currentStake = 0;
         if(
-            _player_eater.currentStake >= amountForReward 
+            _player_eater.amount >= amountForReward 
             && eatAwarded < eatAwardLimit
         ) {
-            rewardPool.setRewards(_eater, eatReward);
+            rewardPool.setRewards(_player_eater.playerAddress, eatReward);
             eatAwarded = eatAwarded.add(eatReward);
         }
-    }
-
-    function playerBalance(address _playerAddress) public view returns(uint256){
-        Player memory _player = players[_playerAddress];
-        uint256 _amount = _player.amount.sub(_player.debt);
-        return _amount;
-    }
-
-    function addWinnings(address _to, uint256 _amount) internal {
-        require(_to != address(this));
-        require(_amount > 0);
-        players[_to].amount = players[_to].amount.add(_amount);
-    }
-
-    function addDebt(address _to, uint256 _debt) internal {
-        require(_to != address(this));
-        require(_debt > 0);
-        players[_to].debt = players[_to].debt.add(_debt);
-    }
-
-    function withdraw(uint256 _amount) payable public {
-        address payable _to = _msgSender();
-        uint256 _amountAvailble = players[_to].amount.sub(players[_to].debt);
-        require(_amount > 0);
-        require(_amountAvailble >= _amount);
-        require(!players[_to].isPlaying);
-        require(players[_to].currentStake == 0);
-        _to.transfer(_amountAvailble);
-        addDebt(_to, _amountAvailble);
-
     }
 
     function addFees(uint256 fee) private {
@@ -180,21 +153,18 @@ contract Eathereum {
         _fees = 0;
     }
 
-    function playerDisconnect(address _disconnector) public onlyOwner {
-        addFees(players[_disconnector].currentStake);
-        addDebt(_disconnector, players[_disconnector].currentStake);
-
-        players[_disconnector].currentStake = 0;
+    function playerDisconnect(address payable _disconnector) payable public onlyOwner {
+        addFees(players[_disconnector].amount);
+        players[_disconnector].amount = 0;
         players[_disconnector].isPlaying = false;
     }
 
-    function playerLeave(address _leaver, uint256 gas) public onlyOwner {
-        uint256 fee = players[_leaver].currentStake.div(10).add(gas);
-
+    function playerLeave(address payable _leaver, uint256 gas) payable public onlyOwner {
+        uint256 fee = players[_leaver].amount.div(10).add(gas);
+        uint leaverAmount = players[_leaver].amount.sub(fee);
         addFees(fee);
-        addDebt(_leaver, fee);
-
-        players[_leaver].currentStake = 0;
+        _leaver.transfer(leaverAmount);
+        players[_leaver].amount = 0;
         players[_leaver].isPlaying = false;
     }
 }
