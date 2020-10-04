@@ -10,7 +10,7 @@ require('chai')
   .use(require('chai-as-promised'))
   .should()
 
-contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
+contract(Eathereum, ([owner, player, playerTwo, dev, playerThree, ref ,refTwo]) => {
     let eathereum,
     eatToken,
     rewardPool
@@ -34,8 +34,8 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
         rewardPool.transferOwnership(eathereum.address, { from: owner })
         await eathereum.setRewardPoolAddress(rewardPool.address, { from: owner })    
 
-        createdPlayer = await eathereum.createPlayer(_name, { from: player, value: _amountLess })
-        await eathereum.createPlayer(_namePlayerTwo, { from: playerTwo, value: _amount })
+        createdPlayer = await eathereum.createPlayer(_name, owner,{ from: player, value: _amountLess })
+        await eathereum.createPlayer(_namePlayerTwo, owner,{ from: playerTwo, value: _amount })
         const event = createdPlayer.logs[0].args
         const rewardPoolBalance = await eatToken.balanceOf(rewardPool.address)
         const playersPlayed = await eathereum.playersPlayed()
@@ -64,8 +64,8 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
     })
 
     it('should eat player - no eat will be distributed', async () => {
-        await eathereum.createPlayer(_name, { from: playerThree, value: _smallAmount })
-        await eathereum.createPlayer(_namePlayerTwo, { from: playerTwo, value: _smallAmount })
+        await eathereum.createPlayer(_name, owner, { from: playerThree, value: _smallAmount })
+        await eathereum.createPlayer(_namePlayerTwo, owner,{ from: playerTwo, value: _smallAmount })
         await eatPlayerCheck(owner, playerTwo, playerThree, eathereum)
         const emptyPlayerRewardPoolBalance = await rewardPool.rewards(playerTwo)
         assert.equal(
@@ -121,7 +121,7 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
         playerNewBalance, 
         ownerOldBalance, 
         ownerNewBalance
-        await eathereum.createPlayer(_namePlayerTwo, { from: playerTwo, value: _smallAmount })
+        await eathereum.createPlayer(_namePlayerTwo, owner,{ from: playerTwo, value: _smallAmount })
         playerOldBalance = await getBalance(playerTwo)
         ownerOldBalance = await getBalance(owner)
         await eathereum.playerDisconnect(playerTwo, { from: owner })
@@ -131,6 +131,36 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
         assert.equal(playerNewBalance, playerOldBalance, 'players balance is the same')
         assert.isAbove(ownerNewBalance, ownerOldBalance, 'owner balance has increased')
     })
+
+    it('should create players with ref addresses', async () => {
+        await eathereum.createPlayer(_namePlayerTwo, ref,{ from: playerTwo, value: _amount })
+        await eathereum.createPlayer(_name, owner, { from: playerThree, value: _smallAmount })
+        const playerTwoInfo = await eathereum.players(playerTwo)
+        assert.equal(playerTwoInfo.ref, ref, 'player two ref equals ref')
+    
+    })
+    it('should award ref fees', async () => {
+        let refOldBalance, refNewBalance
+        await eatPlayerCheck(owner, playerTwo, playerThree, eathereum)
+        const refReward = (await eathereum.refRewards(ref)).toString()
+        assert.equal(refReward, '2500000000000000')
+        refOldBalance = await getBalance(ref)
+        await eathereum.withdrawRefReward(refReward, {from: ref})
+        refNewBalance = await getBalance(ref)
+        assert.isAbove(refNewBalance, refOldBalance)
+    })
+    it('should award both ref', async () => {
+        let gas = await toWei('0.00000001')
+        await eathereum.createPlayer(_name, refTwo, { from: playerThree, value: _smallAmount })
+        await eatPlayerCheck(owner, playerThree, playerTwo, eathereum)
+        const refReward = (await eathereum.refRewards(ref)).toNumber()
+        const refTwoReward = (await eathereum.refRewards(refTwo)).toNumber()
+        assert.isAbove(refReward, 0)
+        assert.isAbove(refTwoReward, 0)
+        await eathereum.playerLeave(playerThree, gas, {from: owner})
+        const newRefReward =  (await eathereum.refRewards(refTwo)).toNumber()
+        assert.isAbove(newRefReward, refTwoReward)
+    })
    
   })
 })
@@ -138,17 +168,18 @@ contract(Eathereum, ([owner, player, playerTwo, dev, playerThree]) => {
 const getBalance = async (address) => parseFloat(
     (web3.utils.fromWei((await web3.eth.getBalance(address)), 'ether')))
 
-const eatPlayerCheck = async (owner, player, playerTwo, eathereum) => {
+const eatPlayerCheck = async (owner, eater, eaten, eathereum) => {
     let gas = await toWei('0.00000001')
-    let playerOldBalance, 
-    playerNewBalance
-    playerOldBalance = await getBalance(player)
-    await eathereum.playerEaten(player, playerTwo, gas, {from: owner})
-    playerNewBalance = await getBalance(player)
-    const playerInfo = await eathereum.players(playerTwo)
-    assert.equal(playerInfo.amount.toString(), '0', 'player two amount needs to be equal to 0')
-    assert.isFalse(playerInfo.isPlaying, 'player two is no longer playing')
-    assert.isAbove(playerNewBalance, playerOldBalance, 'player one balance has increased')
+    let eaterOldBalance, 
+    eaterNewBalance
+
+    eaterOldBalance = await getBalance(eater)
+    await eathereum.playerEaten(eater, eaten, gas, {from: owner})
+    eaterNewBalance = await getBalance(eater)
+    const eaterInfo = await eathereum.players(eaten)
+    assert.equal(eaterInfo.amount.toString(), '0', 'eaten amount needs to be equal to 0')
+    assert.isFalse(eaterInfo.isPlaying, 'eaten is no longer playing')
+    assert.isAbove(eaterNewBalance, eaterOldBalance, 'eater one balance has increased')
 
 }
 

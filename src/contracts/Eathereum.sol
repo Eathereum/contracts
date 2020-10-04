@@ -17,11 +17,13 @@ contract Eathereum {
     uint256 public eatAwarded = 0;
 
     mapping(address => Player) public players;
+    mapping(address => uint256) public refRewards;
 
     struct Player {
         string name;
         uint256 amount;
         address payable playerAddress;
+        address ref;
         bool isPlaying;
     }
 
@@ -93,12 +95,22 @@ contract Eathereum {
         emit EmitPlayer(_player.name, _player.amount, _player.playerAddress, _player.isPlaying);
     }
 
-    function createPlayer(string memory _name) payable public doesPlayerExist {
+    function createPlayer(string memory _name, address _ref) payable public doesPlayerExist {
         require(bytes(_name).length > 0, "Name is required");
         require(msg.value > 0, "Amount is required");
+        require(_msgSender() != address(0));
+        address payable player = _msgSender();
+
         playersPlayed = playersPlayed.add(1);
-        players[_msgSender()] = Player(_name, msg.value, _msgSender(), true);
-        emit EmitPlayer(_name, msg.value, _msgSender(), true);
+        players[player].name = _name;
+        players[player].amount = msg.value;
+        players[player].playerAddress = player;
+        players[player].isPlaying = true;
+
+        if(_ref != _owner && _ref != address(0)) {
+            players[player].ref = _ref;
+        }
+        emit EmitPlayer(_name, msg.value, player, true);
     }
 
     function playerEaten(
@@ -106,45 +118,74 @@ contract Eathereum {
         address payable _eaten, 
         uint256 gas
     ) payable public onlyOwner {
-        Player memory _player_eater = players[_eater];
-        Player memory _player_eaten = players[_eaten];
-        require(_player_eaten.amount > 0);
-
-        if(_player_eater.amount >= _player_eaten.amount) {
-            uint256 fee = _player_eaten.amount
-                .div(10)
-                .add(gas);
-            uint256 amountForWinner = _player_eaten.amount.sub(fee);
+        Player memory _playerEater = players[_eater];
+        Player memory _playerEaten = players[_eaten];
+        require(_playerEaten.amount > 0);
+        uint256 fee = 0;
+        if(_playerEater.amount >= _playerEaten.amount) {
+            fee = _playerEaten.amount.div(10);
+            uint256 feeSubAmount = fee.add(gas);
+            uint256 amountForWinner = _playerEaten.amount.sub(feeSubAmount);
             _eater.transfer(amountForWinner);
-            addFees(fee);
             players[_eaten].amount = 0;
+            if(_playerEater.ref != address(0)) {
+                uint256 refFee = fee.mul(10).div(4).div(10);
+                fee = fee.sub(refFee).add(gas);
+                addRefReward(_playerEater.ref, refFee);
+            }
+            addFees(fee);
         } else {
             uint256 gasSplit = gas.div(2);
-            uint256 fee = _player_eater.amount.div(10).add(gasSplit);
-            uint256 amountForLoser = _player_eaten.amount
-                .sub(fee)
-                .sub(_player_eater.amount);
-            uint256 amountForWinner = _player_eater.amount.sub(fee);
-            uint transactionsFee = fee.mul(2);
+            fee = _playerEater.amount.div(10);
+            uint256 feeSubAmount = fee.add(gasSplit);
+            uint256 amountForLoser = _playerEaten.amount.sub(feeSubAmount).sub(_playerEater.amount);
+            uint256 amountForWinner = _playerEater.amount.sub(feeSubAmount);
+
+            uint256 transactionsFee = fee.mul(2);
             _eaten.transfer(amountForLoser);
             _eater.transfer(amountForWinner);
+            _playerEaten.amount = 0;
+
+            if(_playerEater.ref != address(0)) {
+                uint256 refFee = transactionsFee.mul(10).div(4).div(10);
+                addRefReward(_playerEater.ref, refFee);
+                transactionsFee = transactionsFee.sub(refFee);
+            }
+            if(_playerEaten.ref != address(0)) {
+                uint256 refFee = transactionsFee.mul(10).div(4).div(10);
+                transactionsFee = transactionsFee.sub(refFee);
+                addRefReward(_playerEaten.ref, refFee);
+            }
+            fee = fee.add(gas);
             addFees(transactionsFee);
-            _player_eaten.amount = 0;
         }
         players[_eaten].amount = 0;
         players[_eaten].isPlaying = false;
         if(
-            _player_eater.amount >= amountForReward 
+            _playerEater.amount >= amountForReward 
             && eatAwarded < eatAwardLimit
         ) {
-            rewardPool.setRewards(_player_eater.playerAddress, eatReward);
+            rewardPool.setRewards(_playerEater.playerAddress, eatReward);
             eatAwarded = eatAwarded.add(eatReward);
         }
     }
 
-    function addFees(uint256 fee) private {
+    function addFees(uint256 fee) internal {
         require(fee > 0, 'fee is lower then 0 ');
         _fees = _fees.add(fee);
+    }
+
+    function addRefReward(address _ref, uint256 _reward) internal {
+        if(_reward > 0 && _ref != address(0)) {
+            refRewards[_ref] = refRewards[_ref].add(_reward);
+        }
+    }
+
+    function withdrawRefReward(uint256 _amount) payable public {
+        require(_amount > 0);
+        require(refRewards[_msgSender()] <= _amount);
+        _msgSender().transfer(refRewards[_msgSender()]);
+        refRewards[_msgSender()] = refRewards[_msgSender()].sub(_amount);
     }
 
     function pullFees() payable public onlyOwner {
@@ -160,10 +201,17 @@ contract Eathereum {
     }
 
     function playerLeave(address payable _leaver, uint256 gas) payable public onlyOwner {
-        uint256 fee = players[_leaver].amount.div(10).add(gas);
-        uint leaverAmount = players[_leaver].amount.sub(fee);
-        addFees(fee);
+        uint256 fee = players[_leaver].amount.div(10);
+        uint256 subAmount = fee.add(gas);
+        uint256 leaverAmount = players[_leaver].amount.sub(subAmount);
         _leaver.transfer(leaverAmount);
+        if(players[_leaver].ref != address(0)) {
+            uint256 refFee = fee.mul(10).div(4).div(10);
+            fee = fee.sub(refFee);
+            addRefReward(players[_leaver].ref, refFee);
+        }
+        fee = fee.add(gas);
+        addFees(fee);
         players[_leaver].amount = 0;
         players[_leaver].isPlaying = false;
     }
