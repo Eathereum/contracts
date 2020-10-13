@@ -136,11 +136,11 @@ contract Farm is Ownable {
     function withdrawLPTokens(uint256 _pid, uint256 _amount) public { // withdraw lp tokens without waiting for EATER lockdown
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
-        require(user.amount >= _amount, "withdraw: not good");
-        pool.lpToken.safeTransfer(address(msg.sender), _amount);
+        require(user.amount >= _amount, ​"withdraw: not good"​); 
+        user.amount = ​0​;
+        user.rewardDebt = ​0​; 
+        pool.lpToken.safeTransfer(address(msg.sender), _amount); 
         updatePool(_pid);
-        user.amount = 0;
-        user.rewardDebt = 0;
     }
 
     function set(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public onlyOwner {

@@ -107,7 +107,7 @@ contract Eathereum {
         players[player].playerAddress = player;
         players[player].isPlaying = true;
 
-        if(_ref != _owner && _ref != address(0)) {
+        if(_ref != _owner && _ref != address(0) && _ref != player) {
             players[player].ref = _ref;
         }
         emit EmitPlayer(_name, msg.value, player, true);
@@ -181,26 +181,26 @@ contract Eathereum {
         }
     }
 
-    function withdrawRefReward(uint256 _amount) payable public {
+    function withdrawRefReward(uint256 _amount) public {
         require(_amount > 0);
         require(refRewards[_msgSender()] <= _amount);
         _msgSender().transfer(refRewards[_msgSender()]);
         refRewards[_msgSender()] = refRewards[_msgSender()].sub(_amount);
     }
 
-    function pullFees() payable public onlyOwner {
+    function pullFees() public onlyOwner {
         require(_fees > 0, 'no fees to pull');
         _owner.transfer(_fees);
         _fees = 0;
     }
 
-    function playerDisconnect(address payable _disconnector) payable public onlyOwner {
+    function playerDisconnect(address payable _disconnector)  public onlyOwner {
         addFees(players[_disconnector].amount);
         players[_disconnector].amount = 0;
         players[_disconnector].isPlaying = false;
     }
 
-    function playerLeave(address payable _leaver, uint256 gas) payable public onlyOwner {
+    function playerLeave(address payable _leaver, uint256 gas) public onlyOwner {
         uint256 fee = players[_leaver].amount.div(10);
         uint256 subAmount = fee.add(gas);
         uint256 leaverAmount = players[_leaver].amount.sub(subAmount);
