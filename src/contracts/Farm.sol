@@ -35,7 +35,6 @@ contract Farm is Ownable {
 
     PoolInfo[] public poolInfo;
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
-
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
@@ -136,9 +135,9 @@ contract Farm is Ownable {
     function withdrawLPTokens(uint256 _pid, uint256 _amount) public { // withdraw lp tokens without waiting for EATER lockdown
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
-        require(user.amount >= _amount, ​"withdraw: not good"​); 
-        user.amount = ​0​;
-        user.rewardDebt = ​0​; 
+        require(user.amount >= _amount, "withdraw: not good");
+        user.amount = 0;
+        user.rewardDebt = 0; 
         pool.lpToken.safeTransfer(address(msg.sender), _amount); 
         updatePool(_pid);
     }

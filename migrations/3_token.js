@@ -11,5 +11,5 @@ module.exports = async function(deployer, network, accounts) {
       '3000000000000000000000000'
     )
 
-    await deployer.deploy(EAT, {from: accounts[0]});
+    await deployer.deploy(EAT, "300000000000000000000000", {from: accounts[0]});
 };

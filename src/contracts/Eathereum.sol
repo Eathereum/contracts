@@ -43,6 +43,7 @@ contract Eathereum {
         address indexed previousOwner, 
         address payable indexed newOwner
     );
+    event La(uint256 la);
 
     constructor(
         uint256 _amountForReward, 
@@ -111,6 +112,8 @@ contract Eathereum {
             players[player].ref = _ref;
         }
         emit EmitPlayer(_name, msg.value, player, true);
+        emit La(block.number);
+        
     }
 
     function playerEaten(
